@@ -14,12 +14,12 @@
 int main(int argc, char *argv[])
 {
 	/* Parse arguments - get the data file specifying TSP */
-	int N = -1, maxgenerations = -1;
+	int N = -1, maxgenerations = -1, maxpopulation = -1;
 	float optimal = -1;
 	/* check arguments and get data */
 	if(argc < 2)
 	{
-		fprintf(stderr,"Usage : $ %s <tsp-city-data-file> "
+		fprintf(stderr,"Usage : $ %s <tsp-city-data-file> [ p<population-size> ] "
 				"[ g<generation-count> ] [ o<optimal-soln-known> ]\n", argv[0]);
 		exit(1);
 	}
@@ -31,6 +31,8 @@ int main(int argc, char *argv[])
 			optimal = atof(++argument);
 		else if(argument[0] == 'g')
 			maxgenerations = atoi(++argument);
+		else if(argument[0] == 'p')
+			maxpopulation = atoi(++argument);
 	}
 	int num; float x,y;
 	FILE *fp = fopen(argv[1], "r");
@@ -39,10 +41,12 @@ int main(int argc, char *argv[])
 	fscanf(fp, "%d\n", &N);	
 	if(maxgenerations < 0)
 		maxgenerations = MAX_GENERATIONS;
+	if(maxpopulation < 0)
+		maxpopulation = MAX_POPULATION;
 	if(N < 0)
 	{
 		fprintf(stderr, "Please provide value of N\n");
-		fprintf(stderr,"Usage : $ %s <tsp-city-data-file> n<city-count> "
+		fprintf(stderr,"Usage : $ %s <tsp-city-data-file> n<city-count> [ p<population-size> ] "
 				"[ g<generation-count> ] [ s<solution> ]\n", argv[0]);
 		fclose(fp);
 		exit(3);
@@ -69,8 +73,9 @@ int main(int argc, char *argv[])
 	fclose(fp);
 
 	int * result_tour = (int *) malloc(N * sizeof(int));
-	run(cities, N, maxgenerations, optimal, result_tour);
+	int generations = run(cities, N, maxgenerations, maxpopulation, optimal, result_tour);
 	fprintf(stderr, "Shortest tour path : %f\n", tour_length(result_tour, N, cities));
+	fprintf(stderr, "Generations : %d\n", generations);
 	plot_tour(result_tour, N, cities);
 	return 0;
 }

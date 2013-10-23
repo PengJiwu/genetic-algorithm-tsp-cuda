@@ -9,14 +9,17 @@
 
 int run(city * cities, int N, int maxgenerations, int maxpopulation, float optimal, int * result_tour)
 {
-	int **s1, **s2, *p1, *p2;
-	s1 = (int **) malloc(maxpopulation * sizeof(int *));
+	int **s1;
+	float *p1;
+	s1 = (int **)  malloc(maxpopulation * sizeof(int *));
+	p1 = (float *) malloc(maxpopulation * sizeof(float));
 	int i,j;
 	/* initialize population with random tours */
 	for(i = 0 ; i < maxpopulation ; i++)
 	{
 		s1[i] = (int *) malloc(N * sizeof(int));
 		get_random_tour(s1, i, N);
+		p1[i] = tour_length(s1[i], N, cities);
 		if(optimal >= 0)	/* an optimal solution has been provided. */
 		{
 			if(is_acceptable(s1[i], N, cities, optimal))

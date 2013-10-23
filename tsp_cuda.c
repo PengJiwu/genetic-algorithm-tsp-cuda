@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 #include "tsp.h"
 #include "tsp_cuda.h"
@@ -35,14 +36,10 @@ int run(city * cities, int N, int maxgenerations, int maxpopulation, float optim
 void get_random_tour(int **s, int index, int size)
 {
 	int * tour = s[index];
-	unsigned int seed;
-	/* get a random seed */
-	FILE *fp = fopen("/dev/urandom", "r");
-	fscanf(fp,"%u", &seed);
-	fclose(fp);
-	srandom(seed);
+	/* set seed depending on current time */
+	srandom(time(NULL));
 	
-	/* generate random tour */
+	/* generate (pseudo-)random tour */
 	int i,j;
 	unsigned int r;
 	for(i = 0 ; i < size ; i++)

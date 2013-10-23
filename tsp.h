@@ -1,6 +1,7 @@
 #ifndef __TSP_H
 #define __TSP_H
 
+
 #define MAX_GENERATIONS 200
 #define MAX_POPULATION  1000
 
@@ -12,6 +13,10 @@ typedef struct _city
 	float y;
 }city;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* A common interface to run different implementations of TSP solver genetic algorithm.
  * This method should be implemented in every implementation (e.g. cuda, p-threads, serial)
  * and then link that object with driver.o 
@@ -21,5 +26,9 @@ int run(city * cities, int N, int maxgenerations, int maxpopulation, float optim
 
 float tour_length(int * tour, int N, city * clist);
 void plot_tour(int * tour, int N, city * clist);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

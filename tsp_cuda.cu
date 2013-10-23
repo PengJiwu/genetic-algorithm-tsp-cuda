@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <time.h>
 
+#include "cuda_utils.h"
+
 #include "tsp.h"
 #include "tsp_cuda.h"
 

@@ -15,12 +15,13 @@ int main(int argc, char *argv[])
 {
 	/* Parse arguments - get the data file specifying TSP */
 	int N = -1, maxgenerations = -1, maxpopulation = -1;
+	char *solution_path = NULL;
 	float optimal = -1;
 	/* check arguments and get data */
 	if(argc < 2)
 	{
 		fprintf(stderr,"Usage : $ %s <tsp-city-data-file> [ p<population-size> ] "
-				"[ g<generation-count> ] [ o<optimal-soln-known> ]\n", argv[0]);
+				"[ g<generation-count> ] [ o<optimal-soln-known-file> ]\n", argv[0]);
 		exit(1);
 	}
 	int i;
@@ -28,7 +29,7 @@ int main(int argc, char *argv[])
 	{
 		char * argument = argv[i];
 		if(argument[0] == 'o')
-			optimal = atof(++argument);
+			solution_path = ++argument;
 		else if(argument[0] == 'g')
 			maxgenerations = atoi(++argument);
 		else if(argument[0] == 'p')
@@ -72,6 +73,11 @@ int main(int argc, char *argv[])
 	}
 	fclose(fp);
 
+	if(solution_path)
+	{
+		unsigned int * solution_tour = read_solution(solution_path, N);
+		optimal = tour_length(solution_path, N, cities);
+	}
 	unsigned int * result_tour = (int *) malloc(N * sizeof(int));
 	int generations = run(cities, N, maxgenerations, maxpopulation, optimal, result_tour);
 	fprintf(stderr, "Shortest tour path : %f\n", tour_length(result_tour, N, cities));
@@ -104,4 +110,24 @@ void plot_tour(unsigned int * tour, int N, city * clist)
 		fprintf(fp, "%f %f\n", clist[tour[i]].x, clist[tour[i]].y);
 	}
 	fclose(fp);
+}
+
+unsigned int * read_solution(char *filename, int N)
+{
+	FILE *fp = fopen(filename, "r");
+	unsigned int * tour = (unsigned int *) malloc(N * sizeof(unsigned int));
+	int num, i;
+	i = 0;
+	while(fscanf(fp, "%d\n", &num) != EOF)
+	{
+		if(i > N)
+		{
+			fprintf(stderr, "There are more entries in solution file than expected (%d).\n"
+					"This will lead to incorrect results. Abort.\n",N);
+			exit(5);
+		}
+		tour[i++] = num;
+	}
+	fclose(fp);
+	return tour;
 }

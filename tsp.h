@@ -2,8 +2,9 @@
 #define __TSP_H
 
 
-#define MAX_GENERATIONS 200
+#define MAX_GENERATIONS 500
 #define MAX_POPULATION  1000
+#define MAX_ARR_LEN	200
 
 #define PERCENT_ERROR 0.5
 
@@ -26,6 +27,7 @@ int run(city * cities, int N, int maxgenerations, int maxpopulation, float optim
 
 float tour_length(unsigned int * tour, int N, city * clist);
 void plot_tour(unsigned int * tour, int N, city * clist);
+unsigned int * read_solution(char *filename, int N);
 
 #ifdef __cplusplus
 }

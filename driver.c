@@ -72,7 +72,7 @@ int main(int argc, char *argv[])
 	}
 	fclose(fp);
 
-	int * result_tour = (int *) malloc(N * sizeof(int));
+	unsigned int * result_tour = (int *) malloc(N * sizeof(int));
 	int generations = run(cities, N, maxgenerations, maxpopulation, optimal, result_tour);
 	fprintf(stderr, "Shortest tour path : %f\n", tour_length(result_tour, N, cities));
 	fprintf(stderr, "Generations : %d\n", generations);
@@ -80,7 +80,7 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
-float tour_length(int * tour, int N, city * clist)
+float tour_length(unsigned int * tour, int N, city * clist)
 {
 	float result = 0.0;
 	float dx, dy;
@@ -94,9 +94,14 @@ float tour_length(int * tour, int N, city * clist)
 	return result;
 }
 
-void plot_tour(int * tour, int N, city * clist)
+void plot_tour(unsigned int * tour, int N, city * clist)
 {
+	FILE *fp = fopen("tour.dat", "w");
 	int i;
 	for(i = 0 ; i < N ; i++)
+	{
 		fprintf(stdout, "%f %f\n", clist[tour[i]].x, clist[tour[i]].y);
+		fprintf(fp, "%f %f\n", clist[tour[i]].x, clist[tour[i]].y);
+	}
+	fclose(fp);
 }

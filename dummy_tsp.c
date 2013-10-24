@@ -3,7 +3,7 @@
 
 #include "tsp.h"
 
-int run(city * cities, int N, int maxgenerations, int maxpopulation, float optimal, int * result_tour)
+int run(city * cities, int N, int maxgenerations, int maxpopulation, float optimal, unsigned int * result_tour)
 {
 	/* This file doesn't have a real implementation. This is just a stub -
 	 * 1. to help derive other implementations

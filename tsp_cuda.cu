@@ -2,17 +2,120 @@
 #include <stdlib.h>
 #include <time.h>
 
+#include <curand_kernel.h>
 #include "cuda_utils.h"
 
 #include "tsp.h"
 #include "tsp_cuda.h"
 #include "warmup.h"
 
-__global__ void tsp_solver(unsigned int *s, unsigned int *d, float *ps, float *pd, int *found)
+__global__ void tsp_solver(curandState *state, unsigned int *s, unsigned int *d, float *ps, float *pd, int *found)
 {
-	/* temporarily writing a dummy kernel that just copies s into d */
+	/* compute current thread id */
 	int tid = blockDim.x * blockIdx.x + threadIdx.x;
+	
+	/* store these values for ease. We know this because this is how the kernel parameters are chosen.
+	 * If they are chosen differently, we need to pass them as arguments to the kernel */
+	int population = gridDim.x;
+	int N = blockDim.x; 
+
+	/* tsp algorithm begins here */
+	int i = blockIdx.x;
+	__shared__ int j;
+
+	/* choose a random 'j' for the every 'i' */
+	if(threadIdx.x == 0)
+	{
+		j = 0;
+		while(j == i)
+			j = curand(&state[tid]) % population;
+	}
+	__syncthreads();
+
+	__shared__ unsigned int s_si[MAX_CITIES], s_sj[MAX_CITIES];	// these will hold the two chosen tours i and j
+	s_si[threadIdx.x] = s[i*N + threadIdx.x];
+	s_sj[threadIdx.x] = s[j*N + threadIdx.x];
+
+	__shared__ unsigned int s_d[MAX_CITIES];			// this will hold the evolved tour from i and j
+	/*********************************************************************/
+	/* FUNCTION BEGIN : OX() --> inlined for performance */	
+	/* Mutate operation:  The mutation algorithm works as follows - 
+	 * Find two random indeces cut1 and cut2. Rotate tour s1, (cut2 - cut1) times
+	 * Replace elements at indices cut1 to cut2 by tour s2.*/
+
+	__shared__ unsigned int cut1, cut2;
+	__shared__ int ox_flags[MAX_CITIES], ox_prefix_sum[MAX_CITIES];
+
+	/* Choose cut1 and cut2 such that 0 <= cut1 < cut2 < N */
+	if(threadIdx.x == 0)
+	{
+		unsigned int r1 = 0, r2 = 0;
+		while(r1 == r2)
+		{
+			r1 = curand(&state[tid]) % N;
+			r2 = curand(&state[tid]) % N;
+		}
+		/* Make sure 0 <= cut1 < cut2 < N */
+		if(r1 < r2) { cut1 = r1 ; cut2 = r2; }
+		else	    { cut2 = r1 ; cut1 = r2; }
+	}
+	__syncthreads();
+	for(int pos = cut1 ; pos < cut2 ; pos++)
+	{
+		if(s_si[threadIdx.x] == s_sj[pos])
+			break;
+		ox_flags[threadIdx.x] = (pos > cut2) ? 1 : 0;
+	}
+	__syncthreads();
+
+		/*********************************************************************/
+		/* FUNCTION BEGIN : PrefixSum() --> inlined for performance */	/* TODO : Parallelize !! */
+		if(threadIdx.x == 0)
+		{
+			ox_prefix_sum[cut2] = ox_flags[cut2];
+			for(int i = cut2 + 1 ; i < N ; i++)
+				ox_prefix_sum[i] = ox_prefix_sum[i-1] + ox_flags[i];
+			ox_prefix_sum[0] = ox_prefix_sum[N-1] + ox_flags[0];
+			for(int i = 0; i < cut2 ; i++)
+				ox_prefix_sum[i] = ox_prefix_sum[i-1] + ox_flags[i];
+		}
+		__syncthreads();
+		/* FUNCTION END : PrefixSum() */
+		/*********************************************************************/
+	ox_prefix_sum[threadIdx.x]--;	
+	if(ox_prefix_sum[threadIdx.x] < (N - cut2))
+		ox_prefix_sum[threadIdx.x] += cut2;
+	else
+		ox_prefix_sum[threadIdx.x] -= (N - cut2);
+	__syncthreads();
+
+	if(ox_flags[threadIdx.x])
+		s_d[ox_prefix_sum[threadIdx.x]] = s_si[threadIdx.x];
+	__syncthreads();
+
+	if((threadIdx.x >= cut1) && (threadIdx.x < cut2))
+		s_d[threadIdx.x] = s_sj[threadIdx.x];
+	__syncthreads();
+	/* FUNCTION END : OX() */
+	/*********************************************************************/
+
+	/* TODO : Implement 2OPT_Best and evaluate */
+	__shared__ float p = 1000;
+
+	/*********************************************************************/
+	__syncthreads();
+
+	/* ....this is inclomplete... */
+
+	/* temporarily writing a dummy kernel that just copies s into d */
 	d[tid] = s[tid];
+}
+
+__global__ void setup_kernel(curandState *state, unsigned long long seed)
+{
+	int tid = blockDim.x * blockIdx.x + threadIdx.x;
+	/* Assign same seed to every thread, with a different sequence number and zero offset */
+	curand_init(seed, tid, 0, &state[tid]);
 }
 
 int run(city * cities, int N, int maxgenerations, int maxpopulation, float optimal, unsigned int * result_tour)
@@ -72,14 +175,20 @@ int run(city * cities, int N, int maxgenerations, int maxpopulation, float optim
 	dim3 grid(maxpopulation);
 	dim3 block(N);
 
+	/* setup random number generation in kernel */
+	curandState *deviceStates;
+	CUDA_CHECK_ERROR(  cudaMalloc((void **) &deviceStates, grid.x * block.x * sizeof(curandState)) );
+	setup_kernel<<< grid, block >>> (deviceStates, time(NULL));
+
 	/* warm-up */
-	warm_up(maxpopulation, N);
+	warm_up(grid.x, block.x);
+
 
 	/* XXX : execute the core genetic algorithm loop to solve TSP */
 	int generation = 0;
 	while(generation < maxgenerations)
 	{
-		tsp_solver<<< grid, block >>> (d_s1, d_s2, d_p1, d_p2, d_found);
+		tsp_solver<<< grid, block >>> (deviceStates, d_s1, d_s2, d_p1, d_p2, d_found);
 		CUDA_CHECK_ERROR( cudaMemcpy( &h_found, d_found, sizeof(int), cudaMemcpyDeviceToHost) );
 		if(h_found > 0)
 			break;

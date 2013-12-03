@@ -1,7 +1,7 @@
 CC = gcc 
 NVCC = nvcc
 CUDA_PATH = /opt/cuda-4.2/cuda
-CFLAGS = -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lm
+CFLAGS = -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lcurand -lm
 NVCCFLAGS= -arch=compute_20 -code=sm_20 -I$(CUDA_SDK_PATH)/C/common/inc
 COPTFLAGS = -O3 -g
 LDFLAGS =

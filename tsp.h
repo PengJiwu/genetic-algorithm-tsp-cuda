@@ -5,6 +5,7 @@
 #define MAX_GENERATIONS 500
 #define MAX_POPULATION  1000
 #define MAX_ARR_LEN	200
+#define MAX_CITIES	512	/* keep this value power of 2 as this is size of shared memory in kernel */
 
 #define PERCENT_ERROR 0.5
 
@@ -26,7 +27,7 @@ int run(city * cities, int N, int maxgenerations, int maxpopulation, float optim
 
 
 float tour_length(unsigned int * tour, int N, city * clist);
-void plot_tour(unsigned int * tour, int N, city * clist);
+void plot_tour(unsigned int * tour, int N, city * clist, char *fname);
 unsigned int * read_solution(char *filename, int N);
 
 #ifdef __cplusplus

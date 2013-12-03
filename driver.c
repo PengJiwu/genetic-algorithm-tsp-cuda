@@ -73,16 +73,18 @@ int main(int argc, char *argv[])
 	}
 	fclose(fp);
 
+	unsigned int *solution_tour;
 	if(solution_path)
 	{
-		unsigned int * solution_tour = read_solution(solution_path, N);
-		optimal = tour_length(solution_path, N, cities);
+		solution_tour = read_solution(solution_path, N);
+		optimal = tour_length(solution_tour, N, cities);
 	}
 	unsigned int * result_tour = (int *) malloc(N * sizeof(int));
 	int generations = run(cities, N, maxgenerations, maxpopulation, optimal, result_tour);
 	fprintf(stderr, "Shortest tour path : %f\n", tour_length(result_tour, N, cities));
 	fprintf(stderr, "Generations : %d\n", generations);
-	plot_tour(result_tour, N, cities);
+	plot_tour(result_tour, N, cities, "tour.dat");
+	plot_tour(solution_tour, N, cities, "opt.dat");
 	return 0;
 }
 
@@ -100,9 +102,11 @@ float tour_length(unsigned int * tour, int N, city * clist)
 	return result;
 }
 
-void plot_tour(unsigned int * tour, int N, city * clist)
+void plot_tour(unsigned int * tour, int N, city * clist, char *fname)
 {
-	FILE *fp = fopen("tour.dat", "w");
+	if(!tour)
+		return;
+	FILE *fp = fopen(fname, "w");
 	int i;
 	for(i = 0 ; i < N ; i++)
 	{

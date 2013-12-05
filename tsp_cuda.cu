@@ -9,8 +9,9 @@
 #include "tsp_cuda.h"
 #include "warmup.h"
 
-__global__ void tsp_solver(curandState *state, city * cities, unsigned int *s, unsigned int *d, float *ps, float *pd, int *found)
+__global__ void tsp_solver(curandState *state, city * cities, unsigned int *s, unsigned int *d, float *ps, float *pd, int *found, float optimal)
 {
+	*found = -1;
 	/* compute current thread id */
 	int tid = blockDim.x * blockIdx.x + threadIdx.x;
 	
@@ -114,12 +115,12 @@ __global__ void tsp_solver(curandState *state, city * cities, unsigned int *s, u
 		int i = threadIdx.x;
 		city icurr = cities[s_d[i]];
 		city iprev = cities[s_d[i-1]];
-		city inext = cities[s_d[(i+1)%N]];
+		// city inext = cities[s_d[(i+1)%N]];
 		float d1 = sqrtf((icurr.x - iprev.x) * (icurr.x - iprev.x) + (icurr.y - iprev.y) * (icurr.y - iprev.y));
 		float d2, d3, d4;
-		city jcurr, jprev, jnext;
+		city jcurr, jnext;
 		jcurr = cities[ s_d[(i+1)%N] ];
-		jprev = cities[ s_d[i] ];
+		// jprev = cities[ s_d[i] ];
 		jnext = cities[ s_d[(i+2)%N] ];
 		for(int j = i + 1 ; j < N - 1 ; j++)
 		{
@@ -132,7 +133,7 @@ __global__ void tsp_solver(curandState *state, city * cities, unsigned int *s, u
 				delta[i] = diff;
 				j_val[i] = j;
 			}
-			jprev = jcurr;
+			// jprev = jcurr;
 			jcurr = jnext;
 			jnext = cities[ s_d[(j+1)%N] ];
 		}
@@ -168,19 +169,42 @@ __global__ void tsp_solver(curandState *state, city * cities, unsigned int *s, u
 
 	/* FUNCTION BEGIN : evaluate() */
 	/* Now we need to evaluate each path length 
-	 *TODO : In current implementation, threadIdx.x == 0 calculates the full path length. 
+	 * TODO : In current implementation, threadIdx.x == 0 calculates the full path length. 
 	 * 	 This could be implemented as add scan */
+	__shared__ float p;
 	if(threadIdx.x == 0)
 	{
+		p = 0;
+		float dx, dy;
+		for(int i = 0 ; i < N ; i++)
+		{
+			dx = cities[ s_d[(i + 1) % N] ].x - cities[ s_d[i] ].x;
+			dy = cities[ s_d[(i + 1) % N] ].y - cities[ s_d[i] ].y;
+			p += sqrt((dx*dx) + (dy*dy));
+		}
 	}
+	__syncthreads();
 	/* FUNCTION END : evaluate() */
 	/*********************************************************************/
-	__syncthreads();
+	if(p < ps[blockIdx.x])
+	{
+		d[tid] = s_d[threadIdx.x];
+		pd[blockIdx.x] = p;
+	}
+	else
+	{
+		d[tid] = s_si[threadIdx.x];
+		p = ps[blockIdx.x];
+	}
 
-	/* ....this is inclomplete... */
-
-	/* temporarily writing a dummy kernel that just copies s into d */
-	d[tid] = s[tid];
+	if(threadIdx.x == 0)
+	{
+		float err = p - optimal;
+		if(err < 0)
+			err = -err;
+		if(err < (PERCENT_ERROR * optimal))
+			*found = blockIdx.x;
+	}
 }
 
 __global__ void setup_kernel(curandState *state, unsigned long long seed)
@@ -263,7 +287,7 @@ int run(city * cities, int N, int maxgenerations, int maxpopulation, float optim
 	int generation = 0;
 	while(generation < maxgenerations)
 	{
-		tsp_solver<<< grid, block >>> (deviceStates, d_cities, d_s1, d_s2, d_p1, d_p2, d_found);
+		tsp_solver<<< grid, block >>> (deviceStates, d_cities, d_s1, d_s2, d_p1, d_p2, d_found, optimal);
 		CUDA_CHECK_ERROR( cudaMemcpy( &h_found, d_found, sizeof(int), cudaMemcpyDeviceToHost) );
 		if(h_found >= 0)
 			break;

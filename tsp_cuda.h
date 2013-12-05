@@ -5,7 +5,9 @@
 extern "C" {
 #endif
 
-__global__ void tsp_solver(curandState *state, unsigned int *s, unsigned int *d, float *ps, float *pd, int *found);
+#include "tsp.h"
+
+__global__ void tsp_solver(curandState *state, city * cities, unsigned int *s, unsigned int *d, float *ps, float *pd, int *found);
 __global__ void setup_kernel(curandState *state, unsigned long long seed);
 
 void generate_random_tour(unsigned int *tour, int size);

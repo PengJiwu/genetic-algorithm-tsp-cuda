@@ -9,7 +9,7 @@
 #include "tsp_cuda.h"
 #include "warmup.h"
 
-__global__ void tsp_solver(curandState *state, unsigned int *s, unsigned int *d, float *ps, float *pd, int *found)
+__global__ void tsp_solver(curandState *state, city * cities, unsigned int *s, unsigned int *d, float *ps, float *pd, int *found)
 {
 	/* compute current thread id */
 	int tid = blockDim.x * blockIdx.x + threadIdx.x;
@@ -40,7 +40,7 @@ __global__ void tsp_solver(curandState *state, unsigned int *s, unsigned int *d,
 	/*********************************************************************/
 	/* FUNCTION BEGIN : OX() --> inlined for performance */	
 	/* Mutate operation:  The mutation algorithm works as follows - 
-	 * Find two random indeces cut1 and cut2. Rotate tour s1, (cut2 - cut1) times
+	 * Find two random indices cut1 and cut2. Rotate tour s1, (cut2 - cut1) times
 	 * Replace elements at indices cut1 to cut2 by tour s2.*/
 
 	__shared__ unsigned int cut1, cut2;
@@ -99,9 +99,81 @@ __global__ void tsp_solver(curandState *state, unsigned int *s, unsigned int *d,
 	/* FUNCTION END : OX() */
 	/*********************************************************************/
 
-	/* TODO : Implement 2OPT_Best and evaluate */
-	__shared__ float p = 1000;
+	/* FUNCTION BEGIN : 2OPT_best() */
+	/* 2OPT local search operation. Find the best path from given tour s_d */
+	__shared__ float delta[MAX_CITIES];	/* The reduction in path length caused by the swap */
+	__shared__ int j_val[MAX_CITIES]; /* The corresponding value of j for this delta. */
+	delta[threadIdx.x] = 0;
+	j_val[threadIdx.x] = -1;
+	if((threadIdx.x > 0) && (threadIdx.x < N - 2))
+	{
+		/* We have i = threadIdx.x; We want to calculate
+		 * delta = distance(i, i-1) + distance(j+1, j) - distance(i, j+1) - distance(i-1, j); 
+		 * Let them denote by d1, d2, d3, d4 respectively. Let the correspondng cities be
+		 * icurr, inext, iprev, jcurr, jnext, jprev */
+		int i = threadIdx.x;
+		city icurr = cities[s_d[i]];
+		city iprev = cities[s_d[i-1]];
+		city inext = cities[s_d[(i+1)%N]];
+		float d1 = sqrtf((icurr.x - iprev.x) * (icurr.x - iprev.x) + (icurr.y - iprev.y) * (icurr.y - iprev.y));
+		float d2, d3, d4;
+		city jcurr, jprev, jnext;
+		jcurr = cities[ s_d[(i+1)%N] ];
+		jprev = cities[ s_d[i] ];
+		jnext = cities[ s_d[(i+2)%N] ];
+		for(int j = i + 1 ; j < N - 1 ; j++)
+		{
+			d2 = sqrtf((jnext.x - jcurr.x) * (jnext.x - jcurr.x) + (jnext.y - jcurr.y) * (jnext.y - jcurr.y));
+			d3 = sqrtf((icurr.x - jnext.x) * (icurr.x - jnext.x) + (icurr.y - jnext.y) * (icurr.y - jnext.y));
+			d4 = sqrtf((iprev.x - jcurr.x) * (iprev.x - jcurr.x) + (iprev.y - jcurr.y) * (iprev.y - jcurr.y));
+			float diff = d1 + d2 - d3 - d4;
+			if(diff > delta[i])
+			{
+				delta[i] = diff;
+				j_val[i] = j;
+			}
+			jprev = jcurr;
+			jcurr = jnext;
+			jnext = cities[ s_d[(j+1)%N] ];
+		}
+	}
+	__syncthreads();
+	if(threadIdx.x == 0)
+	{
+		/* Find maximum delta and choose that pair (i,j) for swapping. */
+		float max = 0; 
+		int maxindex = -1;
+		for(int i = 0 ; i < N ; i++)
+		{
+			if(max > delta[i])
+			{
+				max = delta[i];
+				maxindex = i;
+			}
+		}
+		if((max > 0) && (maxindex >= 0))
+		{
+			/* swap */
+			int choseni = maxindex;
+			int chosenj = j_val[maxindex];
+			int tempcity = s_d[choseni];
+			s_d[choseni] = s_d[chosenj];
+			s_d[chosenj] = tempcity;
+		}
+	}
+	__syncthreads();
+	/* FUNCTION END : 2OPT_best() */
 
+	/*********************************************************************/
+
+	/* FUNCTION BEGIN : evaluate() */
+	/* Now we need to evaluate each path length 
+	 *TODO : In current implementation, threadIdx.x == 0 calculates the full path length. 
+	 * 	 This could be implemented as add scan */
+	if(threadIdx.x == 0)
+	{
+	}
+	/* FUNCTION END : evaluate() */
 	/*********************************************************************/
 	__syncthreads();
 
@@ -159,15 +231,18 @@ int run(city * cities, int N, int maxgenerations, int maxpopulation, float optim
 	 */
 	unsigned int *d_s1, *d_s2, *d_stemp;
 	float *d_p1, *d_p2, *d_ptemp;
+	city * d_cities;
 	int h_found = -1, *d_found;		/* the device updates this to notify the host that acceptable solution was found */
 
 	CUDA_CHECK_ERROR(  cudaMalloc(&d_s1, N * maxpopulation * sizeof(unsigned int)) );
 	CUDA_CHECK_ERROR(  cudaMalloc(&d_s2, N * maxpopulation * sizeof(unsigned int)) );
 	CUDA_CHECK_ERROR(  cudaMalloc(&d_p1, maxpopulation * sizeof(float)) );
 	CUDA_CHECK_ERROR(  cudaMalloc(&d_p2, maxpopulation * sizeof(float)) );
+	CUDA_CHECK_ERROR(  cudaMalloc(&d_cities, N * sizeof(city)) );
 	
 	CUDA_CHECK_ERROR(  cudaMemcpy(d_s1,  s1,   N * maxpopulation * sizeof(unsigned int),  cudaMemcpyHostToDevice) );
 	CUDA_CHECK_ERROR(  cudaMemcpy(d_p1,  p1,   maxpopulation * sizeof(float),  cudaMemcpyHostToDevice) );
+	CUDA_CHECK_ERROR(  cudaMemcpy(d_cities,  cities,   N * sizeof(city),  cudaMemcpyHostToDevice) );
 
 	CUDA_CHECK_ERROR(  cudaMalloc(&d_found, sizeof(int)) );
 	CUDA_CHECK_ERROR(  cudaMemcpy(d_found,  &h_found, sizeof(int),  cudaMemcpyHostToDevice) );
@@ -188,9 +263,9 @@ int run(city * cities, int N, int maxgenerations, int maxpopulation, float optim
 	int generation = 0;
 	while(generation < maxgenerations)
 	{
-		tsp_solver<<< grid, block >>> (deviceStates, d_s1, d_s2, d_p1, d_p2, d_found);
+		tsp_solver<<< grid, block >>> (deviceStates, d_cities, d_s1, d_s2, d_p1, d_p2, d_found);
 		CUDA_CHECK_ERROR( cudaMemcpy( &h_found, d_found, sizeof(int), cudaMemcpyDeviceToHost) );
-		if(h_found > 0)
+		if(h_found >= 0)
 			break;
 
 		/* swap d_s1 and d_s2 */
@@ -207,7 +282,7 @@ int run(city * cities, int N, int maxgenerations, int maxpopulation, float optim
 		generation++;
 	}
 
-	if(h_found > 0)
+	if(h_found >= 0)
 		fprintf(stderr, "Optimal solution was found\n");
 	else
 		fprintf(stderr, "Optimal solution was NOT found\n");
